@@ -1,7 +1,7 @@
 name: Sync to HF Spaces (100% Stable Final)
 on:
   push:
-    branches: [main]
+    branches: [hfsysoar]
   workflow_dispatch:
 jobs:
   sync-to-hf:
