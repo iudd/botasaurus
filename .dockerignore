@@ -1,0 +1,7 @@
+botasaurus/
+botasaurus_server/
+__pycache__/
+.git/
+.env
+.DS_Store
+venv/
