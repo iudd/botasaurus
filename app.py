@@ -136,6 +136,21 @@ def get_video(url: str):
             time.sleep(5)
         else:
             logger.info("Page loaded without CF shield issues")
+        
+        # 验证代理是否有效（页面是否正确加载）
+        is_valid_page = False
+        if "Sora" in page_title or "去水印" in page_title:
+            is_valid_page = True
+            logger.info("✓ Page title validation passed")
+        elif page_source and ("Sora" in page_source or "n-input" in page_source or "qushuiyin" in page_source):
+            is_valid_page = True
+            logger.info("✓ Page content validation passed")
+        
+        if not is_valid_page:
+            logger.error(f"✗ Proxy {proxy_url} failed - page not loaded correctly")
+            logger.error(f"Page title: {page_title}")
+            logger.error(f"Page content snippet: {page_source[:300]}")
+            raise Exception(f"Proxy {proxy_url} failed validation - invalid page loaded")
 
         # 查找输入框并输入 URL
         logger.info("Looking for input box...")
