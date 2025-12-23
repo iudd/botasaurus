@@ -1,5 +1,8 @@
 from fastapi import FastAPI, HTTPException
-from botasaurus import AntiDetectDriver
+try:
+    from botasaurus import AntiDetectDriver
+except ImportError:
+    from botasaurus.browser import Driver as AntiDetectDriver
 import time
 import logging
 
