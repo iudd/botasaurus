@@ -112,9 +112,6 @@ def get_video(url: str):
                 logger.info(f"Checking button selector: {selector}")
                 if driver.is_element_present(selector):
                     logger.info(f"Found submit button with selector: {selector}")
-                    # 确保按钮不再是 disabled 状态
-                    time.sleep(1) 
-                    driver.click(selector)
                     button_selector_found = selector
                     break
             except Exception as e:
@@ -126,14 +123,57 @@ def get_video(url: str):
             logger.info(f"Page source snippet: {page_source[:500]}")
             raise Exception("Submit button not found")
 
+        # 关键修改：等待按钮启用（通过 Turnstile 验证）
+        logger.info("Waiting for submit button to become enabled (Turnstile check)...")
+        is_enabled = False
+        for i in range(30): # 等待 30 秒
+            try:
+                # 检查 disabled 属性
+                is_disabled_attr = driver.get_attribute(button_selector_found, "disabled")
+                # 检查 class 是否包含 disabled
+                class_attr = driver.get_attribute(button_selector_found, "class")
+                is_disabled_class = "disabled" in class_attr if class_attr else False
+                
+                if is_disabled_attr is None and not is_disabled_class:
+                    logger.info("Submit button is enabled!")
+                    is_enabled = True
+                    break
+                else:
+                    logger.info(f"Button still disabled (Attr: {is_disabled_attr}, Class: {class_attr}). Waiting...")
+                    time.sleep(1)
+            except Exception as e:
+                logger.warning(f"Error checking button state: {e}")
+                time.sleep(1)
+        
+        if not is_enabled:
+            logger.error("Submit button remained disabled. Turnstile verification likely failed.")
+            # 尝试点击一下 Turnstile iframe (如果有的话)
+            try:
+                logger.info("Attempting to click Turnstile iframe...")
+                driver.click("iframe[src*='challenges.cloudflare.com']")
+                time.sleep(5)
+            except:
+                pass
+            
+            # 再次尝试点击按钮，死马当活马医
+            logger.warning("Attempting to click disabled button anyway...")
+
+        driver.click(button_selector_found)
+
         # 等待结果
         logger.info("Waiting for results...")
         try:
             # 等待 video 或 下载链接
-            driver.wait_for_element("video, a[href*='.mp4'], .download-btn", wait=30)
+            driver.wait_for_element("video, a[href*='.mp4'], .download-btn", wait=60) # 增加等待时间到 60秒
             logger.info("Wait for element completed")
         except:
             logger.warning("Timeout waiting for specific result elements")
+            # 打印当前页面状态帮助调试
+            try:
+                html_snippet = driver.page_html[:1000]
+                logger.info(f"Page HTML snippet after timeout: {html_snippet}")
+            except:
+                pass
 
         # 提取视频链接
         logger.info("Extracting video link...")
@@ -174,7 +214,10 @@ def get_video(url: str):
             except Exception as e:
                 logger.error(f"Fallback search failed: {str(e)}")
 
-        driver.quit()
+        try:
+            driver.close()
+        except:
+            pass
         driver = None
 
         if not video_url:
