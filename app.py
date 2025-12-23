@@ -53,14 +53,11 @@ def get_video(url: str):
 
         # 访问网站
         logger.info("Navigating to https://qushuiyin.me/...")
-        driver.get("https://qushuiyin.me/")
+        # 关键：使用 bypass_cloudflare=True 来自动绕过 Turnstile
+        driver.get("https://qushuiyin.me/", bypass_cloudflare=True)
         
-        # 尝试自动绕过 CF
-        try:
-            logger.info("Attempting detect_and_bypass_cloudflare...")
-            driver.detect_and_bypass_cloudflare()
-        except Exception as e:
-            logger.warning(f"detect_and_bypass_cloudflare failed: {e}")
+        # 额外等待确保页面完全加载
+        time.sleep(3)
 
         # 检查页面标题或内容确认加载成功
         page_title = driver.title
