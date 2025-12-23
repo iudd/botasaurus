@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>去除 Sora 水印</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #63e2b7;
+            --primary-hover: #7fe7c4;
+            --bg-color: #101014;
+            --card-bg: #18181c;
+            --text-main: rgba(255, 255, 255, 0.9);
+            --text-muted: rgba(255, 255, 255, 0.52);
+            --border-color: rgba(255, 255, 255, 0.09);
+        }
+
+        body {
+            margin: 0;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .container {
+            display: flex;
+            width: 100%;
+            max-width: 1000px;
+            padding: 2rem;
+            gap: 2rem;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                flex-direction: column;
+                padding: 1rem;
+            }
+        }
+
+        .left-section,
+        .right-section {
+            flex: 1;
+            background: var(--card-bg);
+            border-radius: 8px;
+            padding: 2rem;
+            border: 1px solid var(--border-color);
+        }
+
+        h1 {
+            font-size: 2rem;
+            margin: 0 0 0.5rem 0;
+            font-weight: 500;
+        }
+
+        .subtitle {
+            color: var(--text-muted);
+            margin-bottom: 2rem;
+            font-size: 0.9rem;
+        }
+
+        .form-section-title {
+            font-size: 1rem;
+            margin-bottom: 0.5rem;
+            color: var(--text-main);
+        }
+
+        .form-section-subtitle {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            margin-bottom: 1rem;
+        }
+
+        .input-wrapper {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 3px;
+            padding: 0 12px;
+            display: flex;
+            align-items: center;
+            height: 40px;
+            margin-bottom: 1.5rem;
+            transition: background 0.3s;
+        }
+
+        .input-wrapper:focus-within {
+            background: rgba(255, 255, 255, 0.15);
+        }
+
+        .input-wrapper input {
+            background: transparent;
+            border: none;
+            color: white;
+            width: 100%;
+            height: 100%;
+            outline: none;
+            font-size: 15px;
+            margin-left: 8px;
+        }
+
+        .input-wrapper input::placeholder {
+            color: rgba(255, 255, 255, 0.38);
+        }
+
+        button.submit-btn {
+            width: 100%;
+            height: 40px;
+            background: transparent;
+            border: 1px solid var(--primary);
+            color: var(--primary);
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 15px;
+            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        button.submit-btn:hover:not(:disabled) {
+            background: rgba(99, 226, 183, 0.1);
+            border-color: var(--primary-hover);
+            color: var(--primary-hover);
+        }
+
+        button.submit-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .video-preview-section {
+            height: 100%;
+            min-height: 300px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 2px dashed var(--border-color);
+            border-radius: 4px;
+            background: rgba(0, 0, 0, 0.2);
+        }
+
+        .placeholder-content {
+            text-align: center;
+            color: var(--text-muted);
+        }
+
+        .placeholder-icon svg {
+            width: 64px;
+            height: 64px;
+            margin-bottom: 1rem;
+            opacity: 0.5;
+        }
+
+        .result-container {
+            display: none;
+            width: 100%;
+            text-align: center;
+        }
+
+        .download-btn {
+            display: inline-block;
+            margin-top: 1rem;
+            padding: 0.5rem 1rem;
+            background: var(--primary);
+            color: #000;
+            text-decoration: none;
+            border-radius: 4px;
+            font-weight: 500;
+        }
+
+        .error-message {
+            color: #e88080;
+            margin-top: 1rem;
+            font-size: 0.9rem;
+            display: none;
+        }
+
+        .loader {
+            border: 3px solid rgba(255, 255, 255, 0.1);
+            border-top: 3px solid var(--primary);
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            animation: spin 1s linear infinite;
+            display: none;
+            margin: 0 auto;
+        }
+
+        @keyframes spin {
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="left-section">
+            <h1>去除 Sora 水印</h1>
+            <p class="subtitle">复制分享链接或分享ID，快速获取无水印视频</p>
+
+            <div class="form-section">
+                <div class="form-section-title">输入 Sora 分享信息</div>
+                <div class="form-section-subtitle">支持镜像站或官网分享链接或 分享ID (s_xxxxx)</div>
+
+                <div class="input-wrapper">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 512 512" fill="none"
+                        stroke="currentColor" stroke-width="36" stroke-linecap="round" stroke-linejoin="round"
+                        style="color: rgba(255,255,255,0.38)">
+                        <path d="M208 352h-64a96 96 0 0 1 0-192h64"></path>
+                        <path d="M304 160h64a96 96 0 0 1 0 192h-64"></path>
+                        <path d="M163.29 256h187.42"></path>
+                    </svg>
+                    <input type="text" id="urlInput" placeholder="粘贴 Sora 分享链接或 ID...">
+                </div>
+
+                <button class="submit-btn" id="submitBtn" onclick="extractVideo()">
+                    <span id="btnText">立即获取</span>
+                    <div class="loader" id="loader"></div>
+                </button>
+
+                <div id="error" class="error-message"></div>
+            </div>
+        </div>
+
+        <div class="right-section">
+            <div class="video-preview-section" id="previewSection">
+                <div class="placeholder-content" id="placeholderContent">
+                    <div class="placeholder-icon">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="currentColor">
+                            <path
+                                d="M374.79 308.78L457.5 367a16 16 0 0 0 22.5-14.62V159.62A16 16 0 0 0 457.5 145l-82.71 58.22A16 16 0 0 0 368 216.3v79.4a16 16 0 0 0 6.79 13.08z"
+                                fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"
+                                stroke-width="32"></path>
+                            <path
+                                d="M268 384H84a52.15 52.15 0 0 1-52-52V180a52.15 52.15 0 0 1 52-52h184.48A51.68 51.68 0 0 1 320 179.52V332a52.15 52.15 0 0 1-52 52z"
+                                fill="none" stroke="currentColor" stroke-miterlimit="10" stroke-width="32"></path>
+                        </svg>
+                    </div>
+                    <h3>视频预览</h3>
+                    <p>输入 Sora 分享链接后<br>这里将展示无水印视频</p>
+                </div>
+
+                <div class="result-container" id="resultContainer">
+                    <p style="color: var(--primary); margin-bottom: 1rem;">获取成功！</p>
+                    <a id="downloadLink" href="#" target="_blank" class="download-btn">下载视频</a>
+                    <p id="videoUrlText"
+                        style="margin-top: 1rem; font-size: 0.8rem; color: var(--text-muted); word-break: break-all;">
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        async function extractVideo() {
+            const input = document.getElementById('urlInput');
+            const btn = document.getElementById('submitBtn');
+            const btnText = document.getElementById('btnText');
+            const loader = document.getElementById('loader');
+            const error = document.getElementById('error');
+            const placeholder = document.getElementById('placeholderContent');
+            const resultContainer = document.getElementById('resultContainer');
+            const downloadLink = document.getElementById('downloadLink');
+            const videoUrlText = document.getElementById('videoUrlText');
+
+            const url = input.value.trim();
+            if (!url) {
+                input.focus();
+                return;
+            }
+
+            // Reset UI
+            btn.disabled = true;
+            btnText.style.display = 'none';
+            loader.style.display = 'block';
+            error.style.display = 'none';
+            placeholder.style.display = 'block';
+            resultContainer.style.display = 'none';
+
+            try {
+                const response = await fetch(`/get_video?url=${encodeURIComponent(url)}`);
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(data.detail || '获取视频失败，请检查链接是否正确。');
+                }
+
+                if (data.video_url) {
+                    downloadLink.href = data.video_url;
+                    videoUrlText.textContent = data.video_url;
+                    placeholder.style.display = 'none';
+                    resultContainer.style.display = 'block';
+                } else {
+                    throw new Error('未找到视频链接。');
+                }
+            } catch (err) {
+                error.textContent = err.message;
+                error.style.display = 'block';
+            } finally {
+                btn.disabled = false;
+                btnText.style.display = 'block';
+                loader.style.display = 'none';
+            }
+        }
+
+        document.getElementById('urlInput').addEventListener('keypress', function (e) {
+            if (e.key === 'Enter') {
+                extractVideo();
+            }
+        });
+    </script>
+</body>
+
+</html>

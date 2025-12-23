@@ -6,15 +6,21 @@ except ImportError:
 import time
 import logging
 
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+
 # 配置日志
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Video Extractor API", description="API to extract video URLs from qushuiyin.me")
 
+# 挂载静态文件目录
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
 @app.get("/")
 def read_root():
-    return {"message": "Video Extractor API", "endpoint": "/get_video?url=<video_url>"}
+    return FileResponse('static/index.html')
 
 @app.get("/get_video")
 def get_video(url: str):
@@ -47,7 +53,7 @@ def get_video(url: str):
         # 检查页面标题或内容确认加载成功
         page_title = driver.title
         logger.info(f"Page title: {page_title}")
-        if "Just a moment" in page_title or "Checking your browser" in driver.page_source:
+        if "Just a moment" in page_title or "Checking your browser" in str(driver.bs4):
             logger.warning("CF shield detected, attempting bypass...")
             time.sleep(5)  # 额外等待 CF 检查
         else:
@@ -55,89 +61,95 @@ def get_video(url: str):
 
         # 查找输入框并输入 URL
         logger.info("Looking for input box...")
-        input_selectors = ["input[type='text']", "input[name='url']", "input[placeholder*='url']", "textarea"]
+        # 基于提供的 HTML: <input type="text" class="n-input__input-el" ...>
+        input_selectors = [".n-input__input-el", "input[placeholder*='Sora']", "input[type='text']"]
         input_box = None
         for selector in input_selectors:
             try:
-                input_box = driver.find_element_by_css_selector(selector)
-                if input_box and input_box.is_displayed():
-                    logger.info(f"Found input box with selector: {selector}")
-                    break
+                if driver.exists(selector):
+                    input_box = driver.select(selector) # Botasaurus way if available, or use selenium method
+                    # Fallback to selenium find_element if driver.select isn't standard selenium
+                    if not input_box:
+                         input_box = driver.find_element_by_css_selector(selector)
+                    
+                    if input_box and input_box.is_displayed():
+                        logger.info(f"Found input box with selector: {selector}")
+                        break
             except:
                 continue
 
         if not input_box:
             logger.error("Input box not found with any selector")
+            # 打印一下页面源码的前一部分帮助调试
+            logger.info(f"Page source snippet: {str(driver.bs4)[:500]}")
             raise Exception("Input box not found")
 
         logger.info(f"Inputting URL: {url}")
-        input_box.clear()
-        input_box.send_keys(url)
-
+        # Botasaurus driver.type is recommended
+        driver.type(selector, url)
+        
         # 查找并点击"立即获取"按钮
         logger.info("Looking for submit button...")
-        button_selectors = ["button[type='submit']", "input[type='submit']", ".submit-btn", "button:contains('立即获取')", "input[value*='获取']"]
+        # 基于 HTML: <button ... class="... submit-btn ...">
+        button_selectors = [".submit-btn", "button:contains('立即获取')"]
         submit_button = None
         for selector in button_selectors:
             try:
-                if "contains" in selector:
-                    # 对于文本包含的按钮，需要用 XPath
-                    xpath = f"//button[contains(text(),'立即获取')] | //input[contains(@value,'立即获取')]"
-                    submit_button = driver.find_element_by_xpath(xpath)
-                else:
-                    submit_button = driver.find_element_by_css_selector(selector)
-                if submit_button and submit_button.is_displayed():
+                if driver.exists(selector):
                     logger.info(f"Found submit button with selector: {selector}")
+                    # 确保按钮不再是 disabled 状态
+                    time.sleep(1) 
+                    driver.click(selector)
+                    submit_button = True
                     break
             except:
                 continue
 
         if not submit_button:
-            logger.error("Submit button not found with any selector")
+            logger.error("Submit button not found")
             raise Exception("Submit button not found")
-
-        logger.info("Clicking submit button...")
-        submit_button.click()
 
         # 等待结果
         logger.info("Waiting for results...")
-        time.sleep(10)  # 根据网站响应时间调整
+        # 等待视频元素或下载链接出现
+        # 假设成功后会出现 video 标签或特定的下载按钮
+        try:
+            driver.wait_for_element("video, a[href*='.mp4'], .download-btn", wait=30)
+        except:
+            logger.warning("Timeout waiting for specific result elements, checking page content...")
 
         # 提取视频链接
         logger.info("Extracting video link...")
-        link_selectors = ["a[href*='download']", "a[href*='.mp4']", ".video-link a", ".result a", ".output a"]
-        video_link = None
-        for selector in link_selectors:
-            try:
-                video_link = driver.find_element_by_css_selector(selector)
-                if video_link and video_link.is_displayed():
-                    logger.info(f"Found video link with selector: {selector}")
-                    break
-            except:
-                continue
-
         video_url = None
-        if video_link:
-            video_url = video_link.get_attribute("href")
-            logger.info(f"Extracted video URL from link: {video_url}")
-        else:
-            # 如果是文本，查找包含链接的元素
-            result_selectors = [".result", ".output", "#result", ".video-url"]
-            for selector in result_selectors:
-                try:
-                    result_element = driver.find_element_by_css_selector(selector)
-                    if result_element and result_element.is_displayed():
-                        text = result_element.text
-                        logger.info(f"Found result text: {text}")
-                        # 尝试提取 URL
-                        import re
-                        url_match = re.search(r'https?://[^\s]+', text)
-                        if url_match:
-                            video_url = url_match.group()
-                            logger.info(f"Extracted video URL from text: {video_url}")
-                            break
-                except:
-                    continue
+        
+        # 1. 检查 video 标签
+        try:
+            video_element = driver.get_element_or_none("video")
+            if video_element:
+                video_url = video_element.get_attribute("src")
+                logger.info(f"Found video URL in <video> tag: {video_url}")
+        except:
+            pass
+
+        # 2. 如果没有，检查下载链接
+        if not video_url:
+            links = driver.links("a")
+            for link in links:
+                href = link.get_attribute("href")
+                if href and (".mp4" in href or "download" in href):
+                    video_url = href
+                    logger.info(f"Found video URL in <a> tag: {video_url}")
+                    break
+        
+        # 3. 最后的手段：在页面文本中搜索 URL
+        if not video_url:
+            import re
+            page_text = driver.text("body")
+            # 寻找类似 https://...mp4 的链接
+            url_match = re.search(r'https?://[^\s"]+\.mp4[^\s"]*', page_text)
+            if url_match:
+                video_url = url_match.group()
+                logger.info(f"Extracted video URL from text: {video_url}")
 
         driver.quit()
         driver = None
