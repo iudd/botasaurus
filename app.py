@@ -90,74 +90,125 @@ def get_video(url: str):
     logger.info(f"Starting video extraction for URL: {url}")
 
     driver = None
-    try:
-        # 使用 AntiDetectDriver 来绕过检测
-        logger.info("Initializing AntiDetectDriver...")
-        
-        # 从代理池随机选择一个代理
-        proxy_url = get_random_proxy()
-        
-        driver = AntiDetectDriver(
-            headless=True,  # 保持 headless 模式
-            wait_for_complete_page_load=True,
-            block_images=True,  # 加速加载
-            proxy=proxy_url,  # 使用随机选择的代理
-        )
-        logger.info("Driver initialized successfully")
-
-        # 启用人类模拟模式，这对过盾至关重要
+    max_proxy_attempts = 3  # 最多尝试 3 个不同的代理
+    
+    # 代理重试循环
+    for attempt in range(max_proxy_attempts):
         try:
-            logger.info("Enabling human mode...")
-            driver.enable_human_mode()
-        except:
-            pass
+            # 使用 AntiDetectDriver 来绕过检测
+            logger.info(f"Proxy attempt {attempt + 1}/{max_proxy_attempts}")
+            logger.info("Initializing AntiDetectDriver...")
+            
+            # 从代理池随机选择一个代理
+            proxy_url = get_random_proxy()
+            
+            driver = AntiDetectDriver(
+                headless=True,  # 保持 headless 模式
+                wait_for_complete_page_load=True,
+                block_images=True,  # 加速加载
+                proxy=proxy_url,  # 使用随机选择的代理
+            )
+            logger.info("Driver initialized successfully")
 
-        # 访问网站
-        logger.info("Navigating to https://qushuiyin.me/...")
-        # 关键：使用 bypass_cloudflare=True 来自动绕过 Turnstile
-        driver.get("https://qushuiyin.me/", bypass_cloudflare=True)
-        
-        # 额外等待确保页面完全加载
-        time.sleep(3)
-
-        # 检查页面标题或内容确认加载成功
-        page_title = driver.title
-        logger.info(f"Page title: {page_title}")
-        
-        # 获取页面源码
-        page_source = ""
-        try:
-            page_source = driver.page_html
-        except Exception as e:
-            logger.warning(f"Failed to get page_html: {str(e)}")
-
-        if "Just a moment" in page_title or "Checking your browser" in page_source:
-            logger.warning("CF shield detected (still present after bypass attempt)...")
-            time.sleep(5)
-        else:
-            logger.info("Page loaded without CF shield issues")
-
-        # 查找输入框并输入 URL
-        logger.info("Looking for input box...")
-        # 基于提供的 HTML: <input type="text" class="n-input__input-el" ...>
-        input_selectors = [".n-input__input-el", "input[placeholder*='Sora']", "input[type='text']"]
-        input_selector_found = None
-        
-        for selector in input_selectors:
+            # 启用人类模拟模式，这对过盾至关重要
             try:
-                logger.info(f"Checking selector: {selector}")
-                if driver.is_element_present(selector):
-                    logger.info(f"Selector {selector} exists")
-                    input_selector_found = selector
-                    break
-            except Exception as e:
-                logger.info(f"Error checking selector {selector}: {str(e)}")
-                continue
+                logger.info("Enabling human mode...")
+                driver.enable_human_mode()
+            except:
+                pass
 
-        if not input_selector_found:
-            logger.error("Input box not found with any selector")
-            logger.info(f"Page source snippet: {page_source[:500]}")
-            raise Exception("Input box not found")
+            # 访问网站
+            logger.info("Navigating to https://qushuiyin.me/...")
+            # 关键：使用 bypass_cloudflare=True 来自动绕过 Turnstile
+            driver.get("https://qushuiyin.me/", bypass_cloudflare=True)
+            
+            # 额外等待确保页面完全加载
+            time.sleep(5)
+
+            # 检查页面标题或内容确认加载成功
+            page_title = driver.title
+            logger.info(f"Page title: {page_title}")
+            
+            # 获取页面源码
+            page_source = ""
+            try:
+                page_source = driver.page_html
+            except Exception as e:
+                logger.warning(f"Failed to get page_html: {str(e)}")
+
+            # 关键验证：检查代理是否可用（页面是否正确加载）
+            is_valid_page = False
+            
+            # 方法1：检查标题
+            if "Sora" in page_title or "去水印" in page_title:
+                is_valid_page = True
+                logger.info("✓ Page title validation passed")
+            
+            # 方法2：检查页面内容
+            if not is_valid_page and page_source:
+                if "Sora" in page_source or "qushuiyin" in page_source or "n-input" in page_source:
+                    is_valid_page = True
+                    logger.info("✓ Page content validation passed")
+            
+            # 方法3：检查是否存在输入框
+            if not is_valid_page:
+                try:
+                    if driver.is_element_present(".n-input__input-el") or driver.is_element_present("input[type='text']"):
+                        is_valid_page = True
+                        logger.info("✓ Input element validation passed")
+                except:
+                    pass
+            
+            # 如果页面无效，尝试下一个代理
+            if not is_valid_page:
+                logger.warning(f"✗ Proxy {proxy_url} failed validation - page not loaded correctly")
+                logger.info(f"Page title was: {page_title}")
+                logger.info(f"Page source snippet: {page_source[:300]}")
+                
+                # 关闭当前 driver
+                try:
+                    driver.close()
+                except:
+                    pass
+                driver = None
+                
+                # 如果还有重试机会，继续下一个代理
+                if attempt < max_proxy_attempts - 1:
+                    logger.info("Trying next proxy...")
+                    continue
+                else:
+                    raise Exception("All proxies failed - could not load valid page")
+            
+            # 页面验证通过，继续执行
+            logger.info("✓ Proxy validation successful, proceeding with extraction...")
+            
+            if "Just a moment" in page_title or "Checking your browser" in page_source:
+                logger.warning("CF shield detected (still present after bypass attempt)...")
+                time.sleep(5)
+            else:
+                logger.info("Page loaded without CF shield issues")
+
+            # 查找输入框并输入 URL
+            logger.info("Looking for input box...")
+            # 基于提供的 HTML: <input type="text" class="n-input__input-el" ...>
+            input_selectors = [".n-input__input-el", "input[placeholder*='Sora']", "input[type='text']"]
+            input_selector_found = None
+            
+            for selector in input_selectors:
+                try:
+                    logger.info(f"Checking selector: {selector}")
+                    if driver.is_element_present(selector):
+                        logger.info(f"Selector {selector} exists")
+                        input_selector_found = selector
+                        break
+                except Exception as e:
+                    logger.info(f"Error checking selector {selector}: {str(e)}")
+                    continue
+
+            if not input_selector_found:
+                logger.error("Input box not found with any selector")
+                logger.info(f"Page source snippet: {page_source[:500]}")
+                raise Exception("Input box not found")
 
         logger.info(f"Inputting URL: {url}")
         try:
@@ -312,15 +363,23 @@ def get_video(url: str):
 
         logger.info(f"Successfully extracted video URL: {video_url}")
         return {"video_url": video_url}
-
-    except Exception as e:
-        logger.error(f"Error extracting video: {str(e)}")
-        if driver:
-            try:
-                driver.quit()
-            except:
-                pass
-        raise HTTPException(status_code=500, detail=f"Error extracting video: {str(e)}")
+        
+        except Exception as e:
+            logger.error(f"Error in attempt {attempt + 1}: {str(e)}")
+            if driver:
+                try:
+                    driver.close()
+                except:
+                    pass
+                driver = None
+            
+            # 如果还有重试机会，继续下一个代理
+            if attempt < max_proxy_attempts - 1:
+                logger.info(f"Retrying with a different proxy...")
+                continue
+            else:
+                # 所有代理都失败了
+                raise HTTPException(status_code=500, detail=f"Error extracting video after {max_proxy_attempts} attempts: {str(e)}")
 
 if __name__ == "__main__":
     import uvicorn
