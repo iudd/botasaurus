@@ -1,3 +1,13 @@
+---
+title: Video Extractor API
+emoji: 📹
+colorFrom: blue
+colorTo: indigo
+sdk: docker
+app_file: app.py
+pinned: false
+---
+
 # Video Extractor API
 
 这是一个基于 Botasaurus 的 API 服务，用于从 https://qushuiyin.me/ 提取视频下载链接。
