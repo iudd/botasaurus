@@ -46,32 +46,29 @@ def get_video(url: str):
 
         # 访问网站
         logger.info("Navigating to https://qushuiyin.me/...")
-        
-        # 调试：打印 driver 对象的所有属性和方法
-        logger.info(f"Driver attributes: {dir(driver)}")
-
         driver.get("https://qushuiyin.me/")
-        time.sleep(3)  # 等待页面加载
-        logger.info("Page loaded, checking for CF shield bypass...")
+        
+        # 尝试自动绕过 CF
+        try:
+            logger.info("Attempting detect_and_bypass_cloudflare...")
+            driver.detect_and_bypass_cloudflare()
+        except Exception as e:
+            logger.warning(f"detect_and_bypass_cloudflare failed: {e}")
 
         # 检查页面标题或内容确认加载成功
         page_title = driver.title
         logger.info(f"Page title: {page_title}")
         
-        # 获取页面源码的安全方法
+        # 获取页面源码
         page_source = ""
         try:
-            # 尝试多种获取源码的方式
-            if hasattr(driver, 'page_source'):
-                page_source = driver.page_source
-            else:
-                page_source = driver.execute_script("return document.documentElement.outerHTML")
+            page_source = driver.page_html
         except Exception as e:
-            logger.warning(f"Failed to get page source: {str(e)}")
+            logger.warning(f"Failed to get page_html: {str(e)}")
 
         if "Just a moment" in page_title or "Checking your browser" in page_source:
-            logger.warning("CF shield detected, attempting bypass...")
-            time.sleep(5)  # 额外等待 CF 检查
+            logger.warning("CF shield detected (still present after bypass attempt)...")
+            time.sleep(5)
         else:
             logger.info("Page loaded without CF shield issues")
 
@@ -79,116 +76,97 @@ def get_video(url: str):
         logger.info("Looking for input box...")
         # 基于提供的 HTML: <input type="text" class="n-input__input-el" ...>
         input_selectors = [".n-input__input-el", "input[placeholder*='Sora']", "input[type='text']"]
-        input_box = None
+        input_selector_found = None
+        
         for selector in input_selectors:
             try:
                 logger.info(f"Checking selector: {selector}")
-                # 使用最原始的 Selenium 方法
-                input_box = driver.find_element_by_css_selector(selector)
-                if input_box and input_box.is_displayed():
-                    logger.info(f"Found input box with selector: {selector}")
+                if driver.is_element_present(selector):
+                    logger.info(f"Selector {selector} exists")
+                    input_selector_found = selector
                     break
             except Exception as e:
-                # 找不到元素是正常的，继续下一个选择器
-                # logger.info(f"Selector {selector} not found: {str(e)}")
+                logger.info(f"Error checking selector {selector}: {str(e)}")
                 continue
 
-        if not input_box:
+        if not input_selector_found:
             logger.error("Input box not found with any selector")
-            # 打印一下页面源码的前一部分帮助调试
             logger.info(f"Page source snippet: {page_source[:500]}")
             raise Exception("Input box not found")
 
         logger.info(f"Inputting URL: {url}")
         try:
-            input_box.clear()
-            input_box.send_keys(url)
+            # 使用 Botasaurus 的 type 方法
+            driver.type(input_selector_found, url)
         except Exception as e:
             logger.error(f"Failed to input URL: {str(e)}")
             raise
 
         # 查找并点击"立即获取"按钮
         logger.info("Looking for submit button...")
-        # 基于 HTML: <button ... class="... submit-btn ...">
         button_selectors = [".submit-btn", "button:contains('立即获取')"]
-        submit_button = None
+        button_selector_found = None
+        
         for selector in button_selectors:
             try:
                 logger.info(f"Checking button selector: {selector}")
-                if "contains" in selector:
-                     # 简单的处理 contains
-                     pass 
-                else:
-                    submit_button = driver.find_element_by_css_selector(selector)
-                
-                if submit_button and submit_button.is_displayed():
+                if driver.is_element_present(selector):
                     logger.info(f"Found submit button with selector: {selector}")
                     # 确保按钮不再是 disabled 状态
                     time.sleep(1) 
-                    submit_button.click()
+                    driver.click(selector)
+                    button_selector_found = selector
                     break
-                else:
-                    submit_button = None
             except Exception as e:
                 logger.info(f"Button selector {selector} failed: {str(e)}")
                 continue
 
-        if not submit_button:
+        if not button_selector_found:
             logger.error("Submit button not found")
             logger.info(f"Page source snippet: {page_source[:500]}")
             raise Exception("Submit button not found")
 
         # 等待结果
         logger.info("Waiting for results...")
-        # 手动等待循环，因为 wait_for_element 可能也不存在
-        found_result = False
-        for i in range(10): # 尝试 10 次，每次 3 秒，共 30 秒
-            time.sleep(3)
-            logger.info(f"Checking for results (attempt {i+1}/10)...")
-            
-            # 检查 video 标签
-            try:
-                video_element = driver.find_element_by_css_selector("video")
-                if video_element:
-                    video_url = video_element.get_attribute("src")
-                    if video_url:
-                        logger.info(f"Found video URL in <video> tag: {video_url}")
-                        found_result = True
-                        break
-            except:
-                pass
-
-            # 检查下载链接
-            try:
-                links = driver.find_elements_by_css_selector("a")
-                for link in links:
-                    href = link.get_attribute("href")
-                    if href and (".mp4" in href or "download" in href):
-                        video_url = href
-                        logger.info(f"Found video URL in <a> tag: {video_url}")
-                        found_result = True
-                        break
-            except:
-                pass
-            
-            if found_result:
-                break
-        
-        if not found_result:
-             logger.warning("Timeout waiting for result elements")
+        try:
+            # 等待 video 或 下载链接
+            driver.wait_for_element("video, a[href*='.mp4'], .download-btn", wait=30)
+            logger.info("Wait for element completed")
+        except:
+            logger.warning("Timeout waiting for specific result elements")
 
         # 提取视频链接
+        logger.info("Extracting video link...")
+        video_url = None
+        
+        # 1. 检查 video 标签
+        try:
+            if driver.is_element_present("video"):
+                video_url = driver.get_attribute("video", "src")
+                logger.info(f"Found video URL in <video> tag: {video_url}")
+        except:
+            pass
+
+        # 2. 如果没有，检查下载链接
+        if not video_url:
+            try:
+                # 获取所有链接并过滤
+                links = driver.get_all_links()
+                for link in links:
+                    if link and (".mp4" in link or "download" in link):
+                        video_url = link
+                        logger.info(f"Found video URL in links: {video_url}")
+                        break
+            except Exception as e:
+                logger.warning(f"Error checking links: {e}")
+        
+        # 3. 最后的手段：在页面文本中搜索 URL
         if not video_url:
             logger.info("Trying fallback text search...")
             try:
                 # 更新源码
-                if hasattr(driver, 'page_source'):
-                    page_source = driver.page_source
-                else:
-                    page_source = driver.execute_script("return document.documentElement.outerHTML")
-                
+                page_source = driver.page_html
                 import re
-                # 寻找类似 https://...mp4 的链接
                 url_match = re.search(r'https?://[^\s"]+\.mp4[^\s"]*', page_source)
                 if url_match:
                     video_url = url_match.group()
