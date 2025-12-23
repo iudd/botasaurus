@@ -5,6 +5,62 @@ except ImportError:
     from botasaurus.browser import Driver as AntiDetectDriver
 import time
 import logging
+import os
+import random
+
+# 内置代理池
+BUILTIN_PROXIES = [
+    "http://46.62.171.144:80",
+    "http://18.202.158.161:80",
+    "http://45.4.202.170:999",
+    "http://200.59.186.176:999",
+    "http://5.202.176.42:80",
+    "http://134.209.29.120:8080",
+    "http://103.30.211.34:80",
+    "http://8.213.195.191:3333",
+    "http://8.220.204.215:8086",
+    "http://47.91.89.3:8081",
+    "http://8.211.195.139:8081",
+    "http://62.99.135.51:80",
+    "http://87.239.31.42:80",
+    "http://8.137.62.53:8081",
+    "http://8.243.68.11:8080",
+    "http://47.121.183.107:9080",
+    "http://154.31.113.209:80",
+    "http://200.33.20.25:80",
+    "http://94.184.25.4:80",
+    "http://47.91.89.3:1081",
+    "http://38.54.9.151:3128",
+    "http://47.91.89.3:6379",
+    "http://103.253.43.144:80",
+    "http://190.116.28.148:80",
+    "http://8.211.51.115:4022",
+    "http://188.245.91.223:80",
+]
+
+def get_proxy_pool():
+    """获取代理池（内置 + 环境变量）"""
+    proxy_pool = BUILTIN_PROXIES.copy()
+    
+    # 从环境变量获取额外代理
+    env_proxies = os.getenv("PROXY_URL", "")
+    if env_proxies:
+        # 支持多个代理，用逗号或分号分隔
+        additional_proxies = [p.strip() for p in env_proxies.replace(';', ',').split(',') if p.strip()]
+        proxy_pool.extend(additional_proxies)
+        logger.info(f"Added {len(additional_proxies)} proxies from environment variable")
+    
+    logger.info(f"Total proxy pool size: {len(proxy_pool)}")
+    return proxy_pool
+
+def get_random_proxy():
+    """从代理池中随机选择一个代理"""
+    proxy_pool = get_proxy_pool()
+    if proxy_pool:
+        selected_proxy = random.choice(proxy_pool)
+        logger.info(f"Selected proxy: {selected_proxy}")
+        return selected_proxy
+    return None
 
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
@@ -37,10 +93,15 @@ def get_video(url: str):
     try:
         # 使用 AntiDetectDriver 来绕过检测
         logger.info("Initializing AntiDetectDriver...")
+        
+        # 从代理池随机选择一个代理
+        proxy_url = get_random_proxy()
+        
         driver = AntiDetectDriver(
-            headless=True,  # 无头模式
+            headless=True,  # 保持 headless 模式
             wait_for_complete_page_load=True,
             block_images=True,  # 加速加载
+            proxy=proxy_url,  # 使用随机选择的代理
         )
         logger.info("Driver initialized successfully")
 

@@ -66,6 +66,20 @@ docker build -t video-extractor .
 docker run -p 8000:8000 video-extractor
 ```
 
+### 配置代理（可选）
+
+如果遇到 Cloudflare 检测问题，可以配置代理：
+
+```bash
+# 设置环境变量
+export PROXY_URL="http://your_proxy_address:your_proxy_port"
+
+# 或者在 Docker 中
+docker run -p 8000:8000 -e PROXY_URL="http://your_proxy_address:your_proxy_port" video-extractor
+```
+
+在 Hugging Face Spaces 中，可以在 Settings -> Variables and secrets 中添加 `PROXY_URL` 环境变量。
+
 ### Hugging Face Spaces 部署
 
 项目已配置自动同步到 HF Spaces，通过 GitHub Actions 实现。
