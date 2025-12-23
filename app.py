@@ -44,6 +44,13 @@ def get_video(url: str):
         )
         logger.info("Driver initialized successfully")
 
+        # 启用人类模拟模式，这对过盾至关重要
+        try:
+            logger.info("Enabling human mode...")
+            driver.enable_human_mode()
+        except:
+            pass
+
         # 访问网站
         logger.info("Navigating to https://qushuiyin.me/...")
         driver.get("https://qushuiyin.me/")
@@ -98,6 +105,16 @@ def get_video(url: str):
         try:
             # 使用 Botasaurus 的 type 方法
             driver.type(input_selector_found, url)
+            
+            # 验证输入是否成功
+            input_value = driver.get_attribute(input_selector_found, "value")
+            logger.info(f"Input box value after typing: {input_value}")
+            if not input_value:
+                logger.warning("Input box is empty! Trying run_js to set value...")
+                driver.run_js(f"document.querySelector('{input_selector_found}').value = '{url}'")
+                # 触发 input 事件以激活按钮状态
+                driver.run_js(f"document.querySelector('{input_selector_found}').dispatchEvent(new Event('input', {{ bubbles: true }}))")
+
         except Exception as e:
             logger.error(f"Failed to input URL: {str(e)}")
             raise
@@ -123,6 +140,18 @@ def get_video(url: str):
             logger.info(f"Page source snippet: {page_source[:500]}")
             raise Exception("Submit button not found")
 
+        # 尝试解决 Turnstile
+        logger.info("Checking for Turnstile widget...")
+        turnstile_selector = "iframe[src*='challenges.cloudflare.com']"
+        if driver.is_element_present(turnstile_selector):
+            logger.info("Turnstile iframe found. Attempting to click...")
+            try:
+                # 尝试点击 iframe 区域
+                driver.click(turnstile_selector)
+                time.sleep(2)
+            except Exception as e:
+                logger.warning(f"Failed to click Turnstile: {e}")
+
         # 关键修改：等待按钮启用（通过 Turnstile 验证）
         logger.info("Waiting for submit button to become enabled (Turnstile check)...")
         is_enabled = False
@@ -139,7 +168,14 @@ def get_video(url: str):
                     is_enabled = True
                     break
                 else:
-                    logger.info(f"Button still disabled (Attr: {is_disabled_attr}, Class: {class_attr}). Waiting...")
+                    if i % 5 == 0: # 每5秒尝试重新点击一下 Turnstile
+                        logger.info(f"Button still disabled. Re-attempting Turnstile click...")
+                        try:
+                            driver.click(turnstile_selector)
+                        except:
+                            pass
+                    else:
+                        logger.info(f"Button still disabled. Waiting...")
                     time.sleep(1)
             except Exception as e:
                 logger.warning(f"Error checking button state: {e}")
@@ -147,15 +183,7 @@ def get_video(url: str):
         
         if not is_enabled:
             logger.error("Submit button remained disabled. Turnstile verification likely failed.")
-            # 尝试点击一下 Turnstile iframe (如果有的话)
-            try:
-                logger.info("Attempting to click Turnstile iframe...")
-                driver.click("iframe[src*='challenges.cloudflare.com']")
-                time.sleep(5)
-            except:
-                pass
-            
-            # 再次尝试点击按钮，死马当活马医
+            # 即使失败也尝试点击，也许只是状态没更新
             logger.warning("Attempting to click disabled button anyway...")
 
         driver.click(button_selector_found)
