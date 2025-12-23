@@ -150,7 +150,7 @@ def get_video(url: str):
             logger.error(f"✗ Proxy {proxy_url} failed - page not loaded correctly")
             logger.error(f"Page title: {page_title}")
             logger.error(f"Page content snippet: {page_source[:300]}")
-            raise Exception(f"Proxy {proxy_url} failed validation - invalid page loaded")
+            raise Exception(f"Proxy validation failed. Please try again to use a different proxy from the pool.")
 
         # 查找输入框并输入 URL
         logger.info("Looking for input box...")
