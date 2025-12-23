@@ -53,7 +53,15 @@ def get_video(url: str):
         # 检查页面标题或内容确认加载成功
         page_title = driver.title
         logger.info(f"Page title: {page_title}")
-        if "Just a moment" in page_title or "Checking your browser" in str(driver.bs4):
+        
+        # 获取页面源码的安全方法
+        try:
+            page_source = driver.execute_script("return document.documentElement.outerHTML")
+        except:
+            page_source = ""
+            logger.warning("Failed to get page source via execute_script")
+
+        if "Just a moment" in page_title or "Checking your browser" in page_source:
             logger.warning("CF shield detected, attempting bypass...")
             time.sleep(5)  # 额外等待 CF 检查
         else:
@@ -66,27 +74,35 @@ def get_video(url: str):
         input_box = None
         for selector in input_selectors:
             try:
+                logger.info(f"Checking selector: {selector}")
                 if driver.exists(selector):
-                    input_box = driver.select(selector) # Botasaurus way if available, or use selenium method
-                    # Fallback to selenium find_element if driver.select isn't standard selenium
-                    if not input_box:
-                         input_box = driver.find_element_by_css_selector(selector)
+                    logger.info(f"Selector {selector} exists")
+                    # 尝试多种方式获取元素
+                    try:
+                        input_box = driver.select(selector)
+                    except:
+                        input_box = driver.find_element_by_css_selector(selector)
                     
-                    if input_box and input_box.is_displayed():
+                    if input_box:
                         logger.info(f"Found input box with selector: {selector}")
                         break
-            except:
+            except Exception as e:
+                logger.info(f"Error checking selector {selector}: {str(e)}")
                 continue
 
         if not input_box:
             logger.error("Input box not found with any selector")
             # 打印一下页面源码的前一部分帮助调试
-            logger.info(f"Page source snippet: {str(driver.bs4)[:500]}")
+            logger.info(f"Page source snippet: {page_source[:500]}")
             raise Exception("Input box not found")
 
         logger.info(f"Inputting URL: {url}")
-        # Botasaurus driver.type is recommended
-        driver.type(selector, url)
+        try:
+            # 尝试使用 type 方法，如果失败则回退
+            driver.type(selector, url)
+        except:
+            logger.info("driver.type failed, trying send_keys")
+            input_box.send_keys(url)
         
         # 查找并点击"立即获取"按钮
         logger.info("Looking for submit button...")
@@ -95,6 +111,7 @@ def get_video(url: str):
         submit_button = None
         for selector in button_selectors:
             try:
+                logger.info(f"Checking button selector: {selector}")
                 if driver.exists(selector):
                     logger.info(f"Found submit button with selector: {selector}")
                     # 确保按钮不再是 disabled 状态
@@ -102,19 +119,21 @@ def get_video(url: str):
                     driver.click(selector)
                     submit_button = True
                     break
-            except:
+            except Exception as e:
+                logger.info(f"Error checking button selector {selector}: {str(e)}")
                 continue
 
         if not submit_button:
             logger.error("Submit button not found")
+            logger.info(f"Page source snippet: {page_source[:500]}")
             raise Exception("Submit button not found")
 
         # 等待结果
         logger.info("Waiting for results...")
         # 等待视频元素或下载链接出现
-        # 假设成功后会出现 video 标签或特定的下载按钮
         try:
             driver.wait_for_element("video, a[href*='.mp4'], .download-btn", wait=30)
+            logger.info("Wait for element completed")
         except:
             logger.warning("Timeout waiting for specific result elements, checking page content...")
 
@@ -122,6 +141,12 @@ def get_video(url: str):
         logger.info("Extracting video link...")
         video_url = None
         
+        # 更新页面源码以进行后续搜索
+        try:
+            page_source = driver.execute_script("return document.documentElement.outerHTML")
+        except:
+            pass
+
         # 1. 检查 video 标签
         try:
             video_element = driver.get_element_or_none("video")
@@ -144,9 +169,8 @@ def get_video(url: str):
         # 3. 最后的手段：在页面文本中搜索 URL
         if not video_url:
             import re
-            page_text = driver.text("body")
             # 寻找类似 https://...mp4 的链接
-            url_match = re.search(r'https?://[^\s"]+\.mp4[^\s"]*', page_text)
+            url_match = re.search(r'https?://[^\s"]+\.mp4[^\s"]*', page_source)
             if url_match:
                 video_url = url_match.group()
                 logger.info(f"Extracted video URL from text: {video_url}")
