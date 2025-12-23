@@ -46,6 +46,10 @@ def get_video(url: str):
 
         # 访问网站
         logger.info("Navigating to https://qushuiyin.me/...")
+        
+        # 调试：打印 driver 对象的所有属性和方法
+        logger.info(f"Driver attributes: {dir(driver)}")
+
         driver.get("https://qushuiyin.me/")
         time.sleep(3)  # 等待页面加载
         logger.info("Page loaded, checking for CF shield bypass...")
